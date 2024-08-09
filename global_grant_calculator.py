@@ -10,7 +10,7 @@ from io import BytesIO
 import numpy as np
 import json
 
-def calculate_totals(host_clubs, international_clubs, ddf, other_donors):
+def calculate_totals(host_clubs, international_clubs, other_donors, endowed_gift):
     """
     Calculate the total contributions and funding for a Rotary Global Grant project.
     
@@ -20,41 +20,53 @@ def calculate_totals(host_clubs, international_clubs, ddf, other_donors):
     - Cash through TRF: Cash contributed through The Rotary Foundation, subject to a 5% fee.
     - World Fund Match: 80% of total DDF contributions, up to a maximum of $400,000.
     - Other Donors: Additional contributions from other sources.
+    - Endowed/Directed Gift: Treated as project cash, not subject to the 5% fee.
     """
     total_host_ddf = sum(club['ddf'] for club in host_clubs)
-    total_host_cash = sum(club['cash'] for club in host_clubs)
+    total_host_cash_direct = sum(club['cash_direct'] for club in host_clubs)
+    total_host_cash_trf = sum(club['cash_trf'] for club in host_clubs)
     total_international_ddf = sum(club['ddf'] for club in international_clubs)
-    total_international_cash = sum(club['cash'] for club in international_clubs)
+    total_international_cash_direct = sum(club['cash_direct'] for club in international_clubs)
+    total_international_cash_trf = sum(club['cash_trf'] for club in international_clubs)
     
-    total_ddf = total_host_ddf + total_international_ddf + ddf
-    total_cash = total_host_cash + total_international_cash
+    total_ddf = total_host_ddf + total_international_ddf
+    total_cash_direct = total_host_cash_direct + total_international_cash_direct
+    total_cash_trf = total_host_cash_trf + total_international_cash_trf
     
     # Cash through TRF is subject to a 5% fee
-    cash_through_trf = total_cash * 0.95
-    fee = total_cash * 0.05
+    fee = total_cash_trf * 0.05
+    project_cash_trf = total_cash_trf
     
     # World Fund match is 80% of DDF, max $400,000
     world_fund_match = min(total_ddf * 0.8, 400000)
     
-    total_other_donors = sum(donor['amount'] for donor in other_donors)
+    total_other_donors_direct = sum(donor['amount_direct'] for donor in other_donors)
+    total_other_donors_trf = sum(donor['amount_trf'] for donor in other_donors)
     
     # Total funding includes all contributions
-    total_funding = total_ddf + cash_through_trf + world_fund_match + total_other_donors
+    total_funding = (total_ddf + total_cash_direct + project_cash_trf + world_fund_match + 
+                     total_other_donors_direct + total_other_donors_trf + endowed_gift)
     
-    total_contributions = total_ddf + total_cash
-    international_contribution_percentage = (total_international_ddf + total_international_cash) / total_contributions if total_contributions > 0 else 0
+    total_contributions = total_ddf + total_cash_direct + total_cash_trf
+    international_contribution_percentage = ((total_international_ddf + total_international_cash_direct + total_international_cash_trf) / 
+                                             total_contributions if total_contributions > 0 else 0)
     
     return {
         'total_host_ddf': total_host_ddf,
-        'total_host_cash': total_host_cash,
+        'total_host_cash_direct': total_host_cash_direct,
+        'total_host_cash_trf': total_host_cash_trf,
         'total_international_ddf': total_international_ddf,
-        'total_international_cash': total_international_cash,
+        'total_international_cash_direct': total_international_cash_direct,
+        'total_international_cash_trf': total_international_cash_trf,
         'total_ddf': total_ddf,
-        'total_cash': total_cash,
-        'cash_through_trf': cash_through_trf,
+        'total_cash_direct': total_cash_direct,
+        'total_cash_trf': total_cash_trf,
+        'project_cash_trf': project_cash_trf,
         'fee': fee,
         'world_fund_match': world_fund_match,
-        'total_other_donors': total_other_donors,
+        'total_other_donors_direct': total_other_donors_direct,
+        'total_other_donors_trf': total_other_donors_trf,
+        'endowed_gift': endowed_gift,
         'total_funding': total_funding,
         'international_contribution_percentage': international_contribution_percentage,
         'total_contributions': total_contributions
@@ -85,14 +97,15 @@ def generate_pie_chart(data):
     """
     Generate a pie chart showing the funding breakdown.
     """
-    labels = ['Host Contributions', 'International Contributions', 'World Fund Match', 'Other Donors']
+    labels = ['Host Contributions', 'International Contributions', 'World Fund Match', 'Other Donors', 'Endowed/Directed Gift']
     sizes = [
-        data['total_host_ddf'] + data['total_host_cash'],
-        data['total_international_ddf'] + data['total_international_cash'],
+        data['total_host_ddf'] + data['total_host_cash_direct'] + data['total_host_cash_trf'],
+        data['total_international_ddf'] + data['total_international_cash_direct'] + data['total_international_cash_trf'],
         data['world_fund_match'],
-        data['total_other_donors']
+        data['total_other_donors_direct'] + data['total_other_donors_trf'],
+        data['endowed_gift']
     ]
-    colors = ['#ff9999', '#66b3ff', '#99ff99', '#ffcc99']
+    colors = ['#ff9999', '#66b3ff', '#99ff99', '#ffcc99', '#ff99cc']
     
     plt.figure(figsize=(8, 6))
     plt.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90)
@@ -118,41 +131,42 @@ def generate_pdf(data, project_details):
     elements.append(Spacer(1, 12))
     
     # Create tables for each section
-    host_data = [['Host Rotary Clubs/Districts', 'DDF (USD)', 'Cash Direct to Project', 'Cash through TRF (Equiv USD)', '5% Fee', 'Total to TRF']]
+    host_data = [['Host Rotary Clubs/Districts', 'DDF (USD)', 'Cash Direct to Project', 'Cash through TRF', 'Project Cash', '5% Fee', 'Total to TRF']]
     for club in data['host_clubs']:
-        cash_through_trf = club['cash'] * 0.95
-        fee = club['cash'] * 0.05
-        total_to_trf = cash_through_trf + fee
-        host_data.append([club['name'], club['ddf'], club['cash'], cash_through_trf, fee, total_to_trf])
-    host_data.append(['Total Host Contributions', data['total_host_ddf'], data['total_host_cash'], 
-                      data['total_host_cash'] * 0.95, data['total_host_cash'] * 0.05, 
-                      data['total_host_cash'] * 0.95 + data['total_host_cash'] * 0.05])
+        fee = club['cash_trf'] * 0.05
+        total_to_trf = club['cash_trf'] + fee
+        host_data.append([club['name'], club['ddf'], club['cash_direct'], club['cash_trf'], club['cash_trf'], fee, total_to_trf])
+    host_data.append(['Total Host Contributions', data['total_host_ddf'], data['total_host_cash_direct'], 
+                      data['total_host_cash_trf'], data['total_host_cash_trf'], data['total_host_cash_trf'] * 0.05, 
+                      data['total_host_cash_trf'] * 1.05])
     
-    international_data = [['International Rotary Clubs/Districts', 'DDF (USD)', 'Cash Direct to Project', 'Cash through TRF (Equiv USD)', '5% Fee', 'Total to TRF']]
+    international_data = [['International Rotary Clubs/Districts', 'DDF (USD)', 'Cash Direct to Project', 'Cash through TRF', 'Project Cash', '5% Fee', 'Total to TRF']]
     for club in data['international_clubs']:
-        cash_through_trf = club['cash'] * 0.95
-        fee = club['cash'] * 0.05
-        total_to_trf = cash_through_trf + fee
-        international_data.append([club['name'], club['ddf'], club['cash'], cash_through_trf, fee, total_to_trf])
-    international_data.append(['Total International Contributions', data['total_international_ddf'], data['total_international_cash'], 
-                               data['total_international_cash'] * 0.95, data['total_international_cash'] * 0.05, 
-                               data['total_international_cash'] * 0.95 + data['total_international_cash'] * 0.05])
+        fee = club['cash_trf'] * 0.05
+        total_to_trf = club['cash_trf'] + fee
+        international_data.append([club['name'], club['ddf'], club['cash_direct'], club['cash_trf'], club['cash_trf'], fee, total_to_trf])
+    international_data.append(['Total International Contributions', data['total_international_ddf'], data['total_international_cash_direct'], 
+                               data['total_international_cash_trf'], data['total_international_cash_trf'], data['total_international_cash_trf'] * 0.05, 
+                               data['total_international_cash_trf'] * 1.05])
     
-    other_donors_data = [['Other donors', 'Cash Direct to Project', 'Cash through TRF (Equiv USD)', '5% Fee', 'Total to TRF']]
+    other_donors_data = [['Other donors', 'Cash Direct to Project', 'Cash through TRF', 'Project Cash', '5% Fee', 'Total to TRF']]
     for donor in data['other_donors']:
-        cash_through_trf = donor['amount'] * 0.95
-        fee = donor['amount'] * 0.05
-        total_to_trf = cash_through_trf + fee
-        other_donors_data.append([donor['name'], donor['amount'], cash_through_trf, fee, total_to_trf])
+        fee = donor['amount_trf'] * 0.05
+        total_to_trf = donor['amount_trf'] + fee
+        other_donors_data.append([donor['name'], donor['amount_direct'], donor['amount_trf'], donor['amount_trf'], fee, total_to_trf])
+    
+    endowed_gift_data = [['Endowed/Directed Gift', 'GIFT Number', 'Amount']]
+    endowed_gift_data.append([data['endowed_gift_name'], data['endowed_gift_number'], data['endowed_gift']])
     
     summary_data = [
-        ['Total Rotarian Contributions', data['total_ddf'] + data['total_cash']],
+        ['Total Rotarian Contributions', data['total_ddf'] + data['total_cash_direct'] + data['total_cash_trf']],
         ['TRF World Fund match (80% of DDF)', data['world_fund_match']],
-        ['Total Other Donors', data['total_other_donors']],
+        ['Total Other Donors', data['total_other_donors_direct'] + data['total_other_donors_trf']],
+        ['Endowed/Directed Gift', data['endowed_gift']],
         ['Total Project Funding', data['total_funding']]
     ]
     
-    for table_data in [host_data, international_data, other_donors_data, summary_data]:
+    for table_data in [host_data, international_data, other_donors_data, endowed_gift_data, summary_data]:
         t = Table(table_data)
         t.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
@@ -184,10 +198,14 @@ def generate_pdf(data, project_details):
     elements.append(Paragraph("Funding Breakdown:", styles['Heading2']))
     funding_breakdown = [
         ['Category', 'Amount', 'Percentage'],
-        ['Host Contributions', f"${data['total_host_ddf'] + data['total_host_cash']:,.2f}", f"{(data['total_host_ddf'] + data['total_host_cash']) / data['total_funding'] * 100:.1f}%"],
-        ['International Contributions', f"${data['total_international_ddf'] + data['total_international_cash']:,.2f}", f"{data['international_contribution_percentage'] * 100:.1f}%"],
+        ['Host Contributions', f"${data['total_host_ddf'] + data['total_host_cash_direct'] + data['total_host_cash_trf']:,.2f}", 
+         f"{(data['total_host_ddf'] + data['total_host_cash_direct'] + data['total_host_cash_trf']) / data['total_funding'] * 100:.1f}%"],
+        ['International Contributions', f"${data['total_international_ddf'] + data['total_international_cash_direct'] + data['total_international_cash_trf']:,.2f}", 
+         f"{data['international_contribution_percentage'] * 100:.1f}%"],
         ['World Fund Match', f"${data['world_fund_match']:,.2f}", f"{data['world_fund_match'] / data['total_funding'] * 100:.1f}%"],
-        ['Other Donors', f"${data['total_other_donors']:,.2f}", f"{data['total_other_donors'] / data['total_funding'] * 100:.1f}%"],
+        ['Other Donors', f"${data['total_other_donors_direct'] + data['total_other_donors_trf']:,.2f}", 
+         f"{(data['total_other_donors_direct'] + data['total_other_donors_trf']) / data['total_funding'] * 100:.1f}%"],
+        ['Endowed/Directed Gift', f"${data['endowed_gift']:,.2f}", f"{data['endowed_gift'] / data['total_funding'] * 100:.1f}%"],
         ['Total', f"${data['total_funding']:,.2f}", "100.0%"]
     ]
     t = Table(funding_breakdown)
@@ -247,42 +265,54 @@ def main():
     st.header("Host Rotary Clubs/Districts")
     host_clubs = []
     for i in range(5):  # Allow up to 5 host clubs
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
             name = st.text_input(f"Host Club/District Name #{i+1}", key=f"host_name_{i}")
         with col2:
             ddf = st.number_input(f"DDF Amount (USD) #{i+1}", min_value=0.0, format="%.2f", key=f"host_ddf_{i}")
         with col3:
-            cash = st.number_input(f"Cash Amount (USD) #{i+1}", min_value=0.0, format="%.2f", key=f"host_cash_{i}")
-        if name and (ddf > 0 or cash > 0):
-            host_clubs.append({"name": name, "ddf": ddf, "cash": cash})
+            cash_direct = st.number_input(f"Cash Direct to Project (USD) #{i+1}", min_value=0.0, format="%.2f", key=f"host_cash_direct_{i}")
+        with col4:
+            cash_trf = st.number_input(f"Cash through TRF (USD) #{i+1}", min_value=0.0, format="%.2f", key=f"host_cash_trf_{i}")
+        if name and (ddf > 0 or cash_direct > 0 or cash_trf > 0):
+            host_clubs.append({"name": name, "ddf": ddf, "cash_direct": cash_direct, "cash_trf": cash_trf})
 
     st.header("International Rotary Clubs/Districts")
     international_clubs = []
     for i in range(5):  # Allow up to 5 international clubs
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
             name = st.text_input(f"International Club/District Name #{i+1}", key=f"int_name_{i}")
         with col2:
             ddf = st.number_input(f"DDF Amount (USD) #{i+1}", min_value=0.0, format="%.2f", key=f"int_ddf_{i}")
         with col3:
-            cash = st.number_input(f"Cash Amount (USD) #{i+1}", min_value=0.0, format="%.2f", key=f"int_cash_{i}")
-        if name and (ddf > 0 or cash > 0):
-            international_clubs.append({"name": name, "ddf": ddf, "cash": cash})
-
-    st.header("TRF World Fund Match")
-    ddf = st.number_input("Additional DDF Amount (USD)", min_value=0.0, format="%.2f")
+            cash_direct = st.number_input(f"Cash Direct to Project (USD) #{i+1}", min_value=0.0, format="%.2f", key=f"int_cash_direct_{i}")
+        with col4:
+            cash_trf = st.number_input(f"Cash through TRF (USD) #{i+1}", min_value=0.0, format="%.2f", key=f"int_cash_trf_{i}")
+        if name and (ddf > 0 or cash_direct > 0 or cash_trf > 0):
+            international_clubs.append({"name": name, "ddf": ddf, "cash_direct": cash_direct, "cash_trf": cash_trf})
 
     st.header("Other Donors")
     other_donors = []
     for i in range(3):  # Allow up to 3 other donors
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         with col1:
             name = st.text_input(f"Other Donor Name #{i+1}", key=f"other_name_{i}")
         with col2:
-            amount = st.number_input(f"Amount (USD) #{i+1}", min_value=0.0, format="%.2f", key=f"other_amount_{i}")
-        if name and amount > 0:
-            other_donors.append({"name": name, "amount": amount})
+            amount_direct = st.number_input(f"Cash Direct to Project (USD) #{i+1}", min_value=0.0, format="%.2f", key=f"other_amount_direct_{i}")
+        with col3:
+            amount_trf = st.number_input(f"Cash through TRF (USD) #{i+1}", min_value=0.0, format="%.2f", key=f"other_amount_trf_{i}")
+        if name and (amount_direct > 0 or amount_trf > 0):
+            other_donors.append({"name": name, "amount_direct": amount_direct, "amount_trf": amount_trf})
+
+    st.header("Endowed/Directed Gift")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        endowed_gift_name = st.text_input("Endowed/Directed Gift Name")
+    with col2:
+        gift_number = st.text_input("GIFT Number")
+    with col3:
+        endowed_gift_amount = st.number_input("Amount (USD)", min_value=0.0, format="%.2f")
 
     col1, col2 = st.columns(2)
     with col1:
@@ -295,8 +325,10 @@ def main():
                     "project_country": project_country,
                     "host_clubs": host_clubs,
                     "international_clubs": international_clubs,
-                    "ddf": ddf,
-                    "other_donors": other_donors
+                    "other_donors": other_donors,
+                    "endowed_gift_name": endowed_gift_name,
+                    "endowed_gift_number": gift_number,
+                    "endowed_gift_amount": endowed_gift_amount
                 }
                 save_project_data(project_data, f"{application_number}.json")
                 st.success(f"Project data saved as {application_number}.json")
@@ -318,7 +350,7 @@ def main():
         elif not host_clubs and not international_clubs:
             st.error("Please enter at least one Host or International Rotary Club/District.")
         else:
-            results = calculate_totals(host_clubs, international_clubs, ddf, other_donors)
+            results = calculate_totals(host_clubs, international_clubs, other_donors, endowed_gift_amount)
             
             funding_warnings = validate_funding(results)
             donor_warnings = validate_other_donors(other_donors)
@@ -335,6 +367,8 @@ def main():
                 "host_clubs": host_clubs,
                 "international_clubs": international_clubs,
                 "other_donors": other_donors,
+                "endowed_gift_name": endowed_gift_name,
+                "endowed_gift_number": gift_number,
                 "warnings": funding_warnings + donor_warnings,
                 **results
             }
@@ -353,11 +387,12 @@ def main():
             # Display summary in Streamlit
             st.header("Summary")
             summary_data = [
-                ["Total Host Contributions", f"${results['total_host_ddf'] + results['total_host_cash']:,.2f}"],
-                ["Total International Contributions", f"${results['total_international_ddf'] + results['total_international_cash']:,.2f}"],
-                ["Total Rotarian Contributions", f"${results['total_ddf'] + results['total_cash']:,.2f}"],
+                ["Total Host Contributions", f"${results['total_host_ddf'] + results['total_host_cash_direct'] + results['total_host_cash_trf']:,.2f}"],
+                ["Total International Contributions", f"${results['total_international_ddf'] + results['total_international_cash_direct'] + results['total_international_cash_trf']:,.2f}"],
+                ["Total Rotarian Contributions", f"${results['total_ddf'] + results['total_cash_direct'] + results['total_cash_trf']:,.2f}"],
                 ["TRF World Fund match (80% of DDF)", f"${results['world_fund_match']:,.2f}"],
-                ["Total Other Donors", f"${results['total_other_donors']:,.2f}"],
+                ["Total Other Donors", f"${results['total_other_donors_direct'] + results['total_other_donors_trf']:,.2f}"],
+                ["Endowed/Directed Gift", f"${results['endowed_gift']:,.2f}"],
                 ["Total Project Funding", f"${results['total_funding']:,.2f}"]
             ]
             
@@ -367,14 +402,15 @@ def main():
             # Display pie chart in Streamlit
             st.header("Funding Breakdown")
             fig, ax = plt.subplots(figsize=(10, 6))
-            labels = ['Host Contributions', 'International Contributions', 'World Fund Match', 'Other Donors']
+            labels = ['Host Contributions', 'International Contributions', 'World Fund Match', 'Other Donors', 'Endowed/Directed Gift']
             sizes = [
-                results['total_host_ddf'] + results['total_host_cash'],
-                results['total_international_ddf'] + results['total_international_cash'],
+                results['total_host_ddf'] + results['total_host_cash_direct'] + results['total_host_cash_trf'],
+                results['total_international_ddf'] + results['total_international_cash_direct'] + results['total_international_cash_trf'],
                 results['world_fund_match'],
-                results['total_other_donors']
+                results['total_other_donors_direct'] + results['total_other_donors_trf'],
+                results['endowed_gift']
             ]
-            colors = ['#ff9999', '#66b3ff', '#99ff99', '#ffcc99']
+            colors = ['#ff9999', '#66b3ff', '#99ff99', '#ffcc99', '#ff99cc']
             ax.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90)
             ax.axis('equal')
             st.pyplot(fig)
@@ -390,9 +426,11 @@ def main():
     
     3. **TRF World Fund Match**: The Rotary Foundation matches 80% of the total DDF contributions, up to a maximum of $400,000.
     
-    4. **Other Donors**: Additional contributions from other sources can be included in the project funding.
+    4. **Other Donors**: Additional contributions from other sources can be included in the project funding. They can contribute either directly to the project or through TRF.
     
-    5. **Total Project Funding**: This includes all DDF, cash contributions (both direct and through TRF), the World Fund match, and other donor contributions.
+    5. **Endowed/Directed Gift**: This is a special type of contribution that is treated as project cash and is not subject to the 5% fee.
+    
+    6. **Total Project Funding**: This includes all DDF, cash contributions (both direct and through TRF), the World Fund match, other donor contributions, and the Endowed/Directed Gift.
     
     **Key Points**:
     - International partner contributions must be at least 15% of the total.
@@ -400,6 +438,8 @@ def main():
     - The total funding must be at least $30,000.
     - Non-Rotarian contributions can't come from a cooperating organization or a beneficiary of the project.
     - Individual Rotarian contributions should be entered under their club's name.
+    - Cash contributions through TRF are subject to a 5% fee, which is added to the total amount sent to TRF.
+    - Endowed/Directed Gifts are not subject to the 5% fee and are treated as project cash.
     
     This calculator helps you plan and visualize your Global Grant funding structure, ensuring it meets Rotary International's requirements.
     """)
