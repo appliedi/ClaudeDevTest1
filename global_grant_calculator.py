@@ -11,6 +11,16 @@ import numpy as np
 import json
 
 def calculate_totals(host_clubs, international_clubs, ddf, other_donors):
+    """
+    Calculate the total contributions and funding for a Rotary Global Grant project.
+    
+    The funding structure is as follows:
+    - DDF (District Designated Fund): Allocated by Rotary districts, not actual cash.
+    - Cash Direct to Project: Actual money contributed directly to the project.
+    - Cash through TRF: Cash contributed through The Rotary Foundation, subject to a 5% fee.
+    - World Fund Match: 80% of total DDF contributions, up to a maximum of $400,000.
+    - Other Donors: Additional contributions from other sources.
+    """
     total_host_ddf = sum(club['ddf'] for club in host_clubs)
     total_host_cash = sum(club['cash'] for club in host_clubs)
     total_international_ddf = sum(club['ddf'] for club in international_clubs)
@@ -19,14 +29,20 @@ def calculate_totals(host_clubs, international_clubs, ddf, other_donors):
     total_ddf = total_host_ddf + total_international_ddf + ddf
     total_cash = total_host_cash + total_international_cash
     
-    cash_through_trf = total_cash * 0.95  # 5% fee
+    # Cash through TRF is subject to a 5% fee
+    cash_through_trf = total_cash * 0.95
     fee = total_cash * 0.05
     
-    world_fund_match = min(total_ddf * 0.8, 400000)  # 80% of DDF, max $400,000
+    # World Fund match is 80% of DDF, max $400,000
+    world_fund_match = min(total_ddf * 0.8, 400000)
     
     total_other_donors = sum(donor['amount'] for donor in other_donors)
     
+    # Total funding includes all contributions
     total_funding = total_ddf + cash_through_trf + world_fund_match + total_other_donors
+    
+    total_contributions = total_ddf + total_cash
+    international_contribution_percentage = (total_international_ddf + total_international_cash) / total_contributions if total_contributions > 0 else 0
     
     return {
         'total_host_ddf': total_host_ddf,
@@ -39,10 +55,36 @@ def calculate_totals(host_clubs, international_clubs, ddf, other_donors):
         'fee': fee,
         'world_fund_match': world_fund_match,
         'total_other_donors': total_other_donors,
-        'total_funding': total_funding
+        'total_funding': total_funding,
+        'international_contribution_percentage': international_contribution_percentage,
+        'total_contributions': total_contributions
     }
 
+def validate_funding(results):
+    """
+    Validate the funding structure based on Rotary International rules.
+    """
+    warnings = []
+    if results['international_contribution_percentage'] < 0.15:
+        warnings.append("International partner contributions must be at least 15% of the total.")
+    if results['total_funding'] < 30000:
+        warnings.append("Total funding must be at least $30,000.")
+    return warnings
+
+def validate_other_donors(other_donors):
+    """
+    Validate other donors to ensure they comply with Rotary International rules.
+    """
+    warnings = []
+    for donor in other_donors:
+        if "foundation" in donor['name'].lower() or "corporation" in donor['name'].lower():
+            warnings.append(f"Non-Rotarian contribution from {donor['name']} may not be eligible. Please ensure it's not from a cooperating organization or a beneficiary of the project.")
+    return warnings
+
 def generate_pie_chart(data):
+    """
+    Generate a pie chart showing the funding breakdown.
+    """
     labels = ['Host Contributions', 'International Contributions', 'World Fund Match', 'Other Donors']
     sizes = [
         data['total_host_ddf'] + data['total_host_cash'],
@@ -63,6 +105,9 @@ def generate_pie_chart(data):
     return img_buffer
 
 def generate_pdf(data, project_details):
+    """
+    Generate a PDF report with detailed information about the Global Grant project.
+    """
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(letter), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=18)
     elements = []
@@ -128,6 +173,43 @@ def generate_pdf(data, project_details):
         elements.append(t)
         elements.append(Spacer(1, 12))
     
+    # Add warnings to PDF
+    if data['warnings']:
+        elements.append(Paragraph("Warnings:", styles['Heading2']))
+        for warning in data['warnings']:
+            elements.append(Paragraph(f"• {warning}", styles['Normal']))
+        elements.append(Spacer(1, 12))
+    
+    # Add funding breakdown
+    elements.append(Paragraph("Funding Breakdown:", styles['Heading2']))
+    funding_breakdown = [
+        ['Category', 'Amount', 'Percentage'],
+        ['Host Contributions', f"${data['total_host_ddf'] + data['total_host_cash']:,.2f}", f"{(data['total_host_ddf'] + data['total_host_cash']) / data['total_funding'] * 100:.1f}%"],
+        ['International Contributions', f"${data['total_international_ddf'] + data['total_international_cash']:,.2f}", f"{data['international_contribution_percentage'] * 100:.1f}%"],
+        ['World Fund Match', f"${data['world_fund_match']:,.2f}", f"{data['world_fund_match'] / data['total_funding'] * 100:.1f}%"],
+        ['Other Donors', f"${data['total_other_donors']:,.2f}", f"{data['total_other_donors'] / data['total_funding'] * 100:.1f}%"],
+        ['Total', f"${data['total_funding']:,.2f}", "100.0%"]
+    ]
+    t = Table(funding_breakdown)
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, 0), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+    elements.append(t)
+    elements.append(Spacer(1, 12))
+    
     # Add pie chart to PDF
     pie_chart = generate_pie_chart(data)
     img = Image(pie_chart, width=400, height=300)
@@ -138,10 +220,16 @@ def generate_pdf(data, project_details):
     return buffer
 
 def save_project_data(data, filename):
+    """
+    Save project data to a JSON file.
+    """
     with open(filename, 'w') as f:
         json.dump(data, f)
 
 def load_project_data(filename):
+    """
+    Load project data from a JSON file.
+    """
     with open(filename, 'r') as f:
         return json.load(f)
 
@@ -232,6 +320,12 @@ def main():
         else:
             results = calculate_totals(host_clubs, international_clubs, ddf, other_donors)
             
+            funding_warnings = validate_funding(results)
+            donor_warnings = validate_other_donors(other_donors)
+            
+            for warning in funding_warnings + donor_warnings:
+                st.warning(warning)
+            
             project_details = {
                 "application_number": application_number,
                 "project_country": project_country
@@ -241,6 +335,7 @@ def main():
                 "host_clubs": host_clubs,
                 "international_clubs": international_clubs,
                 "other_donors": other_donors,
+                "warnings": funding_warnings + donor_warnings,
                 **results
             }
             
@@ -283,6 +378,31 @@ def main():
             ax.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90)
             ax.axis('equal')
             st.pyplot(fig)
+
+    # Add explanatory text about the funding structure
+    st.header("How Rotary Global Grant Funding Works")
+    st.markdown("""
+    1. **DDF (District Designated Fund)**: This is money allocated by Rotary districts from their District Designated Fund. It's not cash, but rather funds available for the district to use on Rotary Foundation programs.
+    
+    2. **Cash Contributions**:
+       - **Cash Direct to Project**: This is actual money contributed directly to the project, bypassing The Rotary Foundation (TRF).
+       - **Cash through TRF**: This is cash contributed to the project through The Rotary Foundation. It's subject to a 5% fee.
+    
+    3. **TRF World Fund Match**: The Rotary Foundation matches 80% of the total DDF contributions, up to a maximum of $400,000.
+    
+    4. **Other Donors**: Additional contributions from other sources can be included in the project funding.
+    
+    5. **Total Project Funding**: This includes all DDF, cash contributions (both direct and through TRF), the World Fund match, and other donor contributions.
+    
+    **Key Points**:
+    - International partner contributions must be at least 15% of the total.
+    - There's no minimum World Fund match, but there's a maximum of $400,000.
+    - The total funding must be at least $30,000.
+    - Non-Rotarian contributions can't come from a cooperating organization or a beneficiary of the project.
+    - Individual Rotarian contributions should be entered under their club's name.
+    
+    This calculator helps you plan and visualize your Global Grant funding structure, ensuring it meets Rotary International's requirements.
+    """)
 
 if __name__ == "__main__":
     main()

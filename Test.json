@@ -1,0 +1,1 @@
+{"application_number": "Test", "project_country": "United States", "host_clubs": [{"name": "Club 1", "ddf": 1000.0, "cash": 1000.0}, {"name": "cLUB 2", "ddf": 1000.0, "cash": 1000.0}], "international_clubs": [{"name": "cLUB 1", "ddf": 100.0, "cash": 0.0}], "ddf": 100.0, "other_donors": [{"name": "sOMEONE", "amount": 1000.0}]}
