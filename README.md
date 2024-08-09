@@ -28,7 +28,7 @@ The Rotary International Grant Calculator is a Streamlit-based web application d
 
 ## Usage
 
-1. Run the Streamlit app:
+1. Run the Streamlit app locally:
    ```
    streamlit run global_grant_calculator.py
    ```
@@ -40,6 +40,17 @@ The Rotary International Grant Calculator is a Streamlit-based web application d
 4. Click "Calculate and Generate PDF" to view the results and download a detailed report
 5. Use the "Save Project Data" button to save your project for future reference
 6. Use the "Load Project Data" feature to resume work on a saved project
+
+## Deploying to Streamlit Cloud
+
+To deploy this app on Streamlit Cloud:
+
+1. Ensure your project is pushed to a GitHub repository.
+2. Go to [Streamlit Cloud](https://streamlit.io/cloud) and sign in with your GitHub account.
+3. Click on "New app" and select your repository, branch, and the main file (`global_grant_calculator.py`).
+4. Click "Deploy" and wait for the process to complete.
+
+The `requirements.txt` file in the repository will automatically tell Streamlit Cloud which dependencies to install.
 
 ## Funding Structure
 
