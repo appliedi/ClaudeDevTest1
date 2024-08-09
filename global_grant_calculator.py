@@ -255,6 +255,14 @@ def main():
     st.set_page_config(page_title="Rotary International Grant Calculator", layout="wide")
     st.title("Rotary International Grant Calculator")
 
+    # Initialize session state for dynamic rows
+    if 'host_club_count' not in st.session_state:
+        st.session_state.host_club_count = 1
+    if 'international_club_count' not in st.session_state:
+        st.session_state.international_club_count = 1
+    if 'other_donor_count' not in st.session_state:
+        st.session_state.other_donor_count = 1
+
     st.header("Project Details")
     col1, col2 = st.columns(2)
     with col1:
@@ -264,7 +272,7 @@ def main():
 
     st.header("Host Rotary Clubs/Districts")
     host_clubs = []
-    for i in range(5):  # Allow up to 5 host clubs
+    for i in range(st.session_state.host_club_count):
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             name = st.text_input(f"Host Club/District Name #{i+1}", key=f"host_name_{i}")
@@ -277,9 +285,19 @@ def main():
         if name and (ddf > 0 or cash_direct > 0 or cash_trf > 0):
             host_clubs.append({"name": name, "ddf": ddf, "cash_direct": cash_direct, "cash_trf": cash_trf})
 
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Add Host Club"):
+            st.session_state.host_club_count += 1
+            st.rerun()
+    with col2:
+        if st.button("Remove Host Club") and st.session_state.host_club_count > 1:
+            st.session_state.host_club_count -= 1
+            st.rerun()
+
     st.header("International Rotary Clubs/Districts")
     international_clubs = []
-    for i in range(5):  # Allow up to 5 international clubs
+    for i in range(st.session_state.international_club_count):
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             name = st.text_input(f"International Club/District Name #{i+1}", key=f"int_name_{i}")
@@ -292,9 +310,19 @@ def main():
         if name and (ddf > 0 or cash_direct > 0 or cash_trf > 0):
             international_clubs.append({"name": name, "ddf": ddf, "cash_direct": cash_direct, "cash_trf": cash_trf})
 
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Add International Club"):
+            st.session_state.international_club_count += 1
+            st.rerun()
+    with col2:
+        if st.button("Remove International Club") and st.session_state.international_club_count > 1:
+            st.session_state.international_club_count -= 1
+            st.rerun()
+
     st.header("Other Donors")
     other_donors = []
-    for i in range(3):  # Allow up to 3 other donors
+    for i in range(st.session_state.other_donor_count):
         col1, col2, col3 = st.columns(3)
         with col1:
             name = st.text_input(f"Other Donor Name #{i+1}", key=f"other_name_{i}")
@@ -304,6 +332,16 @@ def main():
             amount_trf = st.number_input(f"Cash through TRF (USD) #{i+1}", min_value=0.0, format="%.2f", key=f"other_amount_trf_{i}")
         if name and (amount_direct > 0 or amount_trf > 0):
             other_donors.append({"name": name, "amount_direct": amount_direct, "amount_trf": amount_trf})
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Add Other Donor"):
+            st.session_state.other_donor_count += 1
+            st.rerun()
+    with col2:
+        if st.button("Remove Other Donor") and st.session_state.other_donor_count > 1:
+            st.session_state.other_donor_count -= 1
+            st.rerun()
 
     st.header("Endowed/Directed Gift")
     col1, col2, col3 = st.columns(3)
@@ -342,7 +380,10 @@ def main():
             st.session_state.application_number = project_data["application_number"]
             st.session_state.project_country = project_data["project_country"]
             # Update other fields similarly
-            st.experimental_rerun()
+            st.session_state.host_club_count = len(project_data["host_clubs"])
+            st.session_state.international_club_count = len(project_data["international_clubs"])
+            st.session_state.other_donor_count = len(project_data["other_donors"])
+            st.rerun()
 
     if st.button("Calculate and Generate PDF"):
         if not application_number or not project_country:
